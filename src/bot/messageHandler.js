@@ -1,39 +1,17 @@
-// Mensajes de bienvenida para usuarios nuevos
-const WELCOME_MESSAGE = `¡Hola! 👋 Soy *Kash.ai* 🏦
+const { processMessage } = require('../ai/toolHandler');
 
-Tu asistente financiero inteligente por WhatsApp.
-
-Puedo ayudarte con:
-
-💰 *"¿Cuánto tengo?"* — Consultar tu balance
-💸 *"Paga $5,000 a CLABE 012..."* — Enviar pagos SPEI
-📊 *"Dame mi reporte semanal"* — Reportes financieros
-📋 *"Mis transacciones"* — Ver historial
-
-O simplemente cuéntame qué necesitas y te ayudo.
-
-_Powered by MXNB en Arbitrum + Bitso Business API_`;
-
-// Handler principal de mensajes
+// Handler principal de mensajes — ahora con Claude AI
 async function handleMessage(sock, from, text, msg) {
-    const cleanText = text.trim().toLowerCase();
+    const cleanText = text.trim();
 
-    // Comandos básicos
-    if (cleanText === 'hola' || cleanText === 'hi' || cleanText === 'hey') {
-        await sock.sendMessage(from, { text: WELCOME_MESSAGE });
-        return;
-    }
+    // Indicador de "escribiendo..."
+    await sock.sendPresenceUpdate('composing', from);
 
-    if (cleanText === 'menu' || cleanText === 'ayuda' || cleanText === 'help') {
-        await sock.sendMessage(from, { text: WELCOME_MESSAGE });
-        return;
-    }
+    // Procesar con Claude AI
+    const response = await processMessage(from, cleanText);
 
-    // Por ahora, respuesta temporal para cualquier otro mensaje
-    // Esto se reemplazará con Claude AI en el Día 4
-    await sock.sendMessage(from, { 
-        text: `📝 Recibí tu mensaje: "${text}"\n\n🤖 El agente de IA se activará pronto. Por ahora puedo responder a:\n\n• *hola* — Mensaje de bienvenida\n• *menu* — Ver opciones\n• *ayuda* — Ver opciones\n\n_Kash.ai — tu tesorería inteligente_` 
-    });
+    // Enviar respuesta
+    await sock.sendMessage(from, { text: response });
 }
 
 module.exports = { handleMessage };
