@@ -4,6 +4,9 @@ const { checkBalance, sendPayment, getTransactions, generateReport, requestPayme
 // Historial de conversación por usuario (en memoria)
 const conversations = {};
 
+// Pagos pendientes de confirmación por usuario
+const pendingPayments = {};
+
 // Ejecutar la tool que Claude pidió
 function executeTool(toolName, toolInput) {
     switch (toolName) {
@@ -57,6 +60,26 @@ function formatToolResult(toolName, result) {
 
 // Procesar mensaje del usuario con Claude AI
 async function processMessage(userId, userMessage) {
+    const cleanText = userMessage.trim().toLowerCase();
+
+    // Verificar si hay un pago pendiente de confirmación
+    if (pendingPayments[userId]) {
+        const payment = pendingPayments[userId];
+
+        if (cleanText === 'sí' || cleanText === 'si' || cleanText === 'yes' || cleanText === 'confirmar' || cleanText === 'confirmo') {
+            // Ejecutar el pago
+            delete pendingPayments[userId];
+            const result = executeTool('send_payment', payment);
+            return formatToolResult('send_payment', result);
+        } else if (cleanText === 'no' || cleanText === 'cancelar' || cleanText === 'cancel') {
+            // Cancelar el pago
+            delete pendingPayments[userId];
+            return '❌ Pago cancelado. ¿En qué más te puedo ayudar?';
+        } else {
+            return '⚠️ Tienes un pago pendiente de confirmar.\n\nResponde *sí* para confirmar o *no* para cancelar.';
+        }
+    }
+
     // Obtener o crear historial de conversación
     if (!conversations[userId]) {
         conversations[userId] = [];
@@ -78,48 +101,53 @@ async function processMessage(userId, userMessage) {
         let finalResponse = '';
 
         if (response.stop_reason === 'tool_use') {
-            // Claude quiere usar una herramienta
             const toolUseBlock = response.content.find(block => block.type === 'tool_use');
             const textBlock = response.content.find(block => block.type === 'text');
 
             if (toolUseBlock) {
                 console.log(`🔧 Tool call: ${toolUseBlock.name}`, toolUseBlock.input);
 
-                // Ejecutar la tool
-                const toolResult = executeTool(toolUseBlock.name, toolUseBlock.input);
+                // Si es un pago, pedir confirmación primero
+                if (toolUseBlock.name === 'send_payment') {
+                    const p = toolUseBlock.input;
+                    pendingPayments[userId] = p;
 
-                // Formatear resultado bonito para WhatsApp
-                finalResponse = formatToolResult(toolUseBlock.name, toolResult);
+                    finalResponse = `⚠️ *Confirma tu pago:*\n\n👤 Para: ${p.recipient_name || 'Sin nombre'}\n🏦 CLABE: ${p.clabe}\n💰 Monto: $${p.amount?.toLocaleString('es-MX')} MXN\n📝 Concepto: ${p.concept || 'Pago Kash.ai'}\n\n¿Confirmas? Responde *sí* o *no*`;
 
-                // Si Claude también mandó texto antes del tool call, agregarlo
-                if (textBlock && textBlock.text) {
-                    finalResponse = textBlock.text + '\n\n' + finalResponse;
+                    // Guardar en historial
+                    conversations[userId].push({ role: "assistant", content: response.content });
+
+                } else {
+                    // Para otras tools, ejecutar directamente
+                    const toolResult = executeTool(toolUseBlock.name, toolUseBlock.input);
+                    finalResponse = formatToolResult(toolUseBlock.name, toolResult);
+
+                    if (textBlock && textBlock.text) {
+                        finalResponse = textBlock.text + '\n\n' + finalResponse;
+                    }
+
+                    // Guardar en historial
+                    conversations[userId].push({ role: "assistant", content: response.content });
+                    conversations[userId].push({
+                        role: "user",
+                        content: [{
+                            type: "tool_result",
+                            tool_use_id: toolUseBlock.id,
+                            content: JSON.stringify(toolResult)
+                        }]
+                    });
                 }
-
-                // Guardar en historial
-                conversations[userId].push({ role: "assistant", content: response.content });
-                conversations[userId].push({ 
-                    role: "user", 
-                    content: [{
-                        type: "tool_result",
-                        tool_use_id: toolUseBlock.id,
-                        content: JSON.stringify(toolResult)
-                    }]
-                });
             }
         } else {
-            // Claude respondió solo con texto (sin tool)
             const textBlock = response.content.find(block => block.type === 'text');
             finalResponse = textBlock ? textBlock.text : 'No pude procesar tu mensaje.';
-
-            // Guardar en historial
             conversations[userId].push({ role: "assistant", content: response.content });
         }
 
         return finalResponse;
 
     } catch (error) {
-console.error('Error con Claude AI:', error);
+        console.error('Error con Claude AI:', error);
         return '⚠️ Hubo un error con el asistente. Intenta de nuevo en unos segundos.';
     }
 }
