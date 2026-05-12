@@ -1,5 +1,6 @@
 const { chat } = require('./claudeClient');
 const { checkBalance, sendPayment, getTransactions, generateReport, requestPayment } = require('../payments/mockPayments');
+const { findUser, saveTransaction } = require('../database/supabaseClient');
 
 // Historial de conversación por usuario (en memoria)
 const conversations = {};
@@ -58,8 +59,27 @@ function formatToolResult(toolName, result) {
     }
 }
 
+// Guardar transacción en Supabase
+async function savePaymentToDb(userId, paymentData, result) {
+    try {
+        await saveTransaction(userId, {
+            type: 'payment',
+            amount: paymentData.amount,
+            currency: 'MXN',
+            recipient_name: paymentData.recipient_name || 'Sin nombre',
+            recipient_clabe: paymentData.clabe,
+            status: result.success ? 'completed' : 'failed',
+            bitso_reference: result.reference,
+            ai_summary: `Pago de $${paymentData.amount} a ${paymentData.recipient_name || 'Sin nombre'} — ${paymentData.concept || 'Sin concepto'}`
+        });
+        console.log('💾 Transacción guardada en Supabase');
+    } catch (error) {
+        console.error('Error guardando transacción:', error);
+    }
+}
+
 // Procesar mensaje del usuario con Claude AI
-async function processMessage(userId, userMessage) {
+async function processMessage(userId, userMessage, dbUser) {
     const cleanText = userMessage.trim().toLowerCase();
 
     // Verificar si hay un pago pendiente de confirmación
@@ -67,12 +87,16 @@ async function processMessage(userId, userMessage) {
         const payment = pendingPayments[userId];
 
         if (cleanText === 'sí' || cleanText === 'si' || cleanText === 'yes' || cleanText === 'confirmar' || cleanText === 'confirmo') {
-            // Ejecutar el pago
             delete pendingPayments[userId];
             const result = executeTool('send_payment', payment);
+
+            // Guardar en Supabase si tenemos el usuario de DB
+            if (dbUser && dbUser.id) {
+                await savePaymentToDb(dbUser.id, payment, result);
+            }
+
             return formatToolResult('send_payment', result);
         } else if (cleanText === 'no' || cleanText === 'cancelar' || cleanText === 'cancel') {
-            // Cancelar el pago
             delete pendingPayments[userId];
             return '❌ Pago cancelado. ¿En qué más te puedo ayudar?';
         } else {
@@ -85,19 +109,14 @@ async function processMessage(userId, userMessage) {
         conversations[userId] = [];
     }
 
-    // Limitar historial a últimos 10 mensajes
     if (conversations[userId].length > 20) {
         conversations[userId] = conversations[userId].slice(-10);
     }
 
     try {
-        // Enviar a Claude
         const response = await chat(userMessage, conversations[userId]);
-
-        // Guardar mensaje del usuario en historial
         conversations[userId].push({ role: "user", content: userMessage });
 
-        // Procesar la respuesta de Claude
         let finalResponse = '';
 
         if (response.stop_reason === 'tool_use') {
@@ -107,18 +126,15 @@ async function processMessage(userId, userMessage) {
             if (toolUseBlock) {
                 console.log(`🔧 Tool call: ${toolUseBlock.name}`, toolUseBlock.input);
 
-                // Si es un pago, pedir confirmación primero
                 if (toolUseBlock.name === 'send_payment') {
                     const p = toolUseBlock.input;
                     pendingPayments[userId] = p;
 
                     finalResponse = `⚠️ *Confirma tu pago:*\n\n👤 Para: ${p.recipient_name || 'Sin nombre'}\n🏦 CLABE: ${p.clabe}\n💰 Monto: $${p.amount?.toLocaleString('es-MX')} MXN\n📝 Concepto: ${p.concept || 'Pago Kash.ai'}\n\n¿Confirmas? Responde *sí* o *no*`;
 
-                    // Guardar en historial
                     conversations[userId].push({ role: "assistant", content: response.content });
 
                 } else {
-                    // Para otras tools, ejecutar directamente
                     const toolResult = executeTool(toolUseBlock.name, toolUseBlock.input);
                     finalResponse = formatToolResult(toolUseBlock.name, toolResult);
 
@@ -126,7 +142,6 @@ async function processMessage(userId, userMessage) {
                         finalResponse = textBlock.text + '\n\n' + finalResponse;
                     }
 
-                    // Guardar en historial
                     conversations[userId].push({ role: "assistant", content: response.content });
                     conversations[userId].push({
                         role: "user",

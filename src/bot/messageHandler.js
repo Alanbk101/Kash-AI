@@ -4,6 +4,9 @@ const { findUser, createUser } = require('../database/supabaseClient');
 // Usuarios en proceso de registro
 const pendingRegistration = {};
 
+// Cache de usuarios para no consultar Supabase en cada mensaje
+const userCache = {};
+
 // Handler principal de mensajes
 async function handleMessage(sock, from, text, msg) {
     const cleanText = text.trim();
@@ -18,8 +21,9 @@ async function handleMessage(sock, from, text, msg) {
 
         if (user) {
             delete pendingRegistration[from];
+            userCache[from] = user;
             await sock.sendMessage(from, { 
-                text: `✅ *¡Listo, ${businessName}!*\n\nTu cuenta en Kash.ai está activa.\n\nAhora puedes:\n💰 Consultar tu balance\n💸 Enviar pagos SPEI\n📊 Generar reportes\n📋 Ver transacciones\n\n¿En qué te ayudo?` 
+                text: `✅ *¡Listo, ${businessName}!*\n\nTu cuenta en Kash.ai está activa.\n\nAhora puedes:\n💰 Consultar tu balance\n💸 Enviar pagos SPEI\n📊 Generar reportes\n📋 Ver transacciones\n🧾 Solicitar cobros\n\n¿En qué te ayudo?` 
             });
         } else {
             await sock.sendMessage(from, { 
@@ -29,8 +33,14 @@ async function handleMessage(sock, from, text, msg) {
         return;
     }
 
-    // Verificar si el usuario existe en la base de datos
-    const user = await findUser(from);
+    // Buscar usuario en cache o en Supabase
+    let user = userCache[from];
+    if (!user) {
+        user = await findUser(from);
+        if (user) {
+            userCache[from] = user;
+        }
+    }
 
     if (!user) {
         // Usuario nuevo — iniciar registro
@@ -41,8 +51,8 @@ async function handleMessage(sock, from, text, msg) {
         return;
     }
 
-    // Usuario existente — procesar con IA
-    const response = await processMessage(from, cleanText);
+    // Usuario existente — procesar con IA (pasando datos del usuario de DB)
+    const response = await processMessage(from, cleanText, user);
     await sock.sendMessage(from, { text: response });
 }
 
