@@ -3,7 +3,6 @@ require('dotenv').config();
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// System prompt — la personalidad de Kash.ai
 const SYSTEM_PROMPT = `Eres Kash, el asistente financiero inteligente para PyMEs mexicanas.
 
 REGLAS DE COMPORTAMIENTO:
@@ -26,16 +25,11 @@ CONTEXTO TÉCNICO:
 - Los pagos se procesan vía Bitso Business API y SPEI
 - Los balances onchain están en Arbitrum (Layer 2 de Ethereum)`;
 
-// Tools — las acciones que Claude puede ejecutar
 const TOOLS = [
     {
         name: "check_balance",
         description: "Consulta el balance actual del usuario en MXNB (onchain) y MXN (Bitso). Usar cuando el usuario pregunta cuánto tiene, su saldo, o su balance.",
-        input_schema: {
-            type: "object",
-            properties: {},
-            required: []
-        }
+        input_schema: { type: "object", properties: {}, required: [] }
     },
     {
         name: "send_payment",
@@ -43,22 +37,10 @@ const TOOLS = [
         input_schema: {
             type: "object",
             properties: {
-                recipient_name: { 
-                    type: "string", 
-                    description: "Nombre del destinatario" 
-                },
-                clabe: { 
-                    type: "string", 
-                    description: "CLABE interbancaria de 18 dígitos" 
-                },
-                amount: { 
-                    type: "number", 
-                    description: "Monto en MXN a enviar" 
-                },
-                concept: { 
-                    type: "string", 
-                    description: "Concepto o razón del pago" 
-                }
+                recipient_name: { type: "string", description: "Nombre del destinatario" },
+                clabe: { type: "string", description: "CLABE interbancaria de 18 dígitos" },
+                amount: { type: "number", description: "Monto en MXN a enviar" },
+                concept: { type: "string", description: "Concepto o razón del pago" }
             },
             required: ["clabe", "amount"]
         }
@@ -68,12 +50,7 @@ const TOOLS = [
         description: "Obtiene el historial de transacciones recientes. Usar cuando el usuario pide ver sus movimientos, transacciones o historial.",
         input_schema: {
             type: "object",
-            properties: {
-                days: { 
-                    type: "number", 
-                    description: "Últimos N días a consultar (default 7)" 
-                }
-            },
+            properties: { days: { type: "number", description: "Últimos N días a consultar (default 7)" } },
             required: []
         }
     },
@@ -82,13 +59,7 @@ const TOOLS = [
         description: "Genera un reporte financiero resumido con análisis de IA. Usar cuando el usuario pide reporte, resumen o análisis de sus finanzas.",
         input_schema: {
             type: "object",
-            properties: {
-                period: { 
-                    type: "string", 
-                    enum: ["today", "week", "month"],
-                    description: "Período del reporte" 
-                }
-            },
+            properties: { period: { type: "string", enum: ["today", "week", "month"], description: "Período del reporte" } },
             required: []
         }
     },
@@ -98,25 +69,15 @@ const TOOLS = [
         input_schema: {
             type: "object",
             properties: {
-                client_name: { 
-                    type: "string", 
-                    description: "Nombre del cliente a cobrar" 
-                },
-                amount: { 
-                    type: "number", 
-                    description: "Monto a cobrar en MXN" 
-                },
-                concept: { 
-                    type: "string", 
-                    description: "Concepto del cobro" 
-                }
+                client_name: { type: "string", description: "Nombre del cliente a cobrar" },
+                amount: { type: "number", description: "Monto a cobrar en MXN" },
+                concept: { type: "string", description: "Concepto del cobro" }
             },
             required: ["amount"]
         }
     }
 ];
 
-// Función principal — enviar mensaje a Claude y obtener respuesta
 async function chat(userMessage, conversationHistory = []) {
     const messages = [
         ...conversationHistory,

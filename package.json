@@ -10,7 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.95.1",
+    "@anthropic-ai/sdk": "^0.95.2",
     "@supabase/supabase-js": "^2.105.3",
     "@whiskeysockets/baileys": "^7.0.0-rc10",
     "dotenv": "^17.4.2",

@@ -1,6 +1,7 @@
 const { chat } = require('./claudeClient');
 const { checkBalance, sendPayment, getTransactions, generateReport, requestPayment } = require('../payments/mockPayments');
 const { findUser, saveTransaction } = require('../database/supabaseClient');
+const { generateSmartReport, getUserTransactions } = require('./reportGenerator');
 
 // Historial de conversación por usuario (en memoria)
 const conversations = {};
@@ -18,7 +19,7 @@ function executeTool(toolName, toolInput) {
         case 'get_transactions':
             return getTransactions(toolInput);
         case 'generate_report':
-            return generateReport(toolInput);
+            return null; // Se maneja aparte con generateSmartReport
         case 'request_payment':
             return requestPayment(toolInput);
         default:
@@ -47,9 +48,6 @@ function formatToolResult(toolName, result) {
             });
             txMsg += `\n💚 Ingresos: +$${result.total_ingresos.toLocaleString('es-MX')}\n❤️ Egresos: -$${result.total_egresos.toLocaleString('es-MX')}\n📊 Neto: $${result.balance_neto.toLocaleString('es-MX')}`;
             return txMsg;
-
-        case 'generate_report':
-            return `📊 *Reporte financiero — ${result.period}*\n\n💚 Ingresos: $${result.ingresos.toLocaleString('es-MX')}\n❤️ Egresos: $${result.egresos.toLocaleString('es-MX')}\n📈 Balance neto: +$${result.balance_neto.toLocaleString('es-MX')}\n\n🏦 *Saldos:*\n🔗 MXNB: $${result.saldo_mxnb.toLocaleString('es-MX')}\n🏦 Bitso: $${result.saldo_bitso.toLocaleString('es-MX')}\n📊 Total: $${result.saldo_total.toLocaleString('es-MX')}\n\n📝 *Top gastos:*\n${result.top_gastos.map((g, i) => `${i + 1}. ${g.nombre} — $${g.monto.toLocaleString('es-MX')}`).join('\n')}\n\n🤖 *Análisis IA:* ${result.analisis}`;
 
         case 'request_payment':
             return `🧾 *Instrucciones de cobro*\n\nEnvía esto a *${result.client_name}*:\n\n─────────────\n🏦 Banco: ${result.bank}\n📋 CLABE: ${result.clabe_deposit}\n💰 Monto: $${result.amount.toLocaleString('es-MX')} MXN\n📝 Referencia: ${result.reference}\n📝 Concepto: ${result.concept}\n─────────────\n\n🔔 Te avisaré cuando llegue el depósito.`;
@@ -90,7 +88,6 @@ async function processMessage(userId, userMessage, dbUser) {
             delete pendingPayments[userId];
             const result = executeTool('send_payment', payment);
 
-            // Guardar en Supabase si tenemos el usuario de DB
             if (dbUser && dbUser.id) {
                 await savePaymentToDb(dbUser.id, payment, result);
             }
@@ -126,14 +123,29 @@ async function processMessage(userId, userMessage, dbUser) {
             if (toolUseBlock) {
                 console.log(`🔧 Tool call: ${toolUseBlock.name}`, toolUseBlock.input);
 
+                // Pagos — pedir confirmación
                 if (toolUseBlock.name === 'send_payment') {
                     const p = toolUseBlock.input;
                     pendingPayments[userId] = p;
 
                     finalResponse = `⚠️ *Confirma tu pago:*\n\n👤 Para: ${p.recipient_name || 'Sin nombre'}\n🏦 CLABE: ${p.clabe}\n💰 Monto: $${p.amount?.toLocaleString('es-MX')} MXN\n📝 Concepto: ${p.concept || 'Pago Kash.ai'}\n\n¿Confirmas? Responde *sí* o *no*`;
 
-                    conversations[userId].push({ role: "assistant", content: response.content });
+                    conversations[userId] = [];
 
+                // Reportes — usar reporte inteligente con datos de Supabase
+                } else if (toolUseBlock.name === 'generate_report') {
+                    const period = toolUseBlock.input.period || 'week';
+
+                    if (dbUser && dbUser.id) {
+                        finalResponse = await generateSmartReport(dbUser.id, period);
+                    } else {
+                        const mockResult = generateReport(toolUseBlock.input);
+                        finalResponse = formatToolResult('generate_report_mock', mockResult);
+                    }
+
+                    conversations[userId] = [];
+
+                // Otras tools — ejecutar directamente
                 } else {
                     const toolResult = executeTool(toolUseBlock.name, toolUseBlock.input);
                     finalResponse = formatToolResult(toolUseBlock.name, toolResult);
