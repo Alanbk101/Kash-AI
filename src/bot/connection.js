@@ -7,13 +7,12 @@ async function connectToWhatsApp(messageHandler) {
 
     const sock = makeWASocket({
         auth: state,
-        browser: ['Kash.ai', 'Chrome', '1.0.0']
+        browser: ['Kash.ai', 'Chrome', '1.0.0'],
+        logger: require('pino')({ level: 'silent' })
     });
 
-    // Guardar credenciales cuando se actualicen
     sock.ev.on('creds.update', saveCreds);
 
-    // Manejar conexión y QR
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
@@ -23,8 +22,8 @@ async function connectToWhatsApp(messageHandler) {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error instanceof Boom) 
-                ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut 
+            const shouldReconnect = (lastDisconnect?.error instanceof Boom)
+                ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut
                 : true;
 
             console.log('❌ Conexión cerrada. Reconectando:', shouldReconnect);
@@ -34,22 +33,23 @@ async function connectToWhatsApp(messageHandler) {
             }
         } else if (connection === 'open') {
             console.log('✅ Kash.ai conectado a WhatsApp');
+            console.log('🤖 Bot listo para recibir mensajes\n');
         }
     });
 
-    // Escuchar mensajes
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0];
         if (!msg?.message || msg.key.fromMe) return;
 
         const from = msg.key.remoteJid;
-        const text = msg.message.conversation 
-            || msg.message.extendedTextMessage?.text 
+        const text = msg.message.conversation
+            || msg.message.extendedTextMessage?.text
             || '';
 
         if (!text || from === 'status@broadcast') return;
 
-        console.log(`📩 Mensaje de ${from}: ${text}`);
+        const timestamp = new Date().toLocaleTimeString('es-MX');
+        console.log(`📩 [${timestamp}] Mensaje de ${from}: ${text}`);
 
         try {
             await messageHandler(sock, from, text, msg);
