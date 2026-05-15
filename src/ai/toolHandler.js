@@ -2,6 +2,7 @@ const { chat } = require('./claudeClient');
 const { checkBalance, sendPayment, getTransactions, generateReport, requestPayment } = require('../payments/mockPayments');
 const { findUser, saveTransaction } = require('../database/supabaseClient');
 const { generateSmartReport, getUserTransactions } = require('./reportGenerator');
+const { checkRealBalance, formatBalance } = require("../payments/realPayments");
 
 // Historial de conversación por usuario (en memoria)
 const conversations = {};
@@ -10,10 +11,10 @@ const conversations = {};
 const pendingPayments = {};
 
 // Ejecutar la tool que Claude pidió
-function executeTool(toolName, toolInput) {
+async function executeTool(toolName, toolInput) {
     switch (toolName) {
         case 'check_balance':
-            return checkBalance();
+            return checkRealBalance();
         case 'send_payment':
             return sendPayment(toolInput);
         case 'get_transactions':
@@ -31,7 +32,7 @@ function executeTool(toolName, toolInput) {
 function formatToolResult(toolName, result) {
     switch (toolName) {
         case 'check_balance':
-            return `💰 *Tu balance actual:*\n\n🔗 MXNB (Arbitrum): $${result.mxnb_onchain.toLocaleString('es-MX')} MXN\n🏦 Bitso: $${result.bitso_mxn.toLocaleString('es-MX')} MXN\n─────────────\n📊 *Total: $${result.total.toLocaleString('es-MX')} MXN*\n\n🕐 ${result.last_updated}`;
+            return formatBalance(result);
 
         case 'send_payment':
             if (result.success) {
@@ -86,7 +87,7 @@ async function processMessage(userId, userMessage, dbUser) {
 
         if (cleanText === 'sí' || cleanText === 'si' || cleanText === 'yes' || cleanText === 'confirmar' || cleanText === 'confirmo') {
             delete pendingPayments[userId];
-            const result = executeTool('send_payment', payment);
+            const result = await executeTool('send_payment', payment);
 
             if (dbUser && dbUser.id) {
                 await savePaymentToDb(dbUser.id, payment, result);
@@ -147,7 +148,7 @@ async function processMessage(userId, userMessage, dbUser) {
 
                 // Otras tools — ejecutar directamente
                 } else {
-                    const toolResult = executeTool(toolUseBlock.name, toolUseBlock.input);
+                    const toolResult = await executeTool(toolUseBlock.name, toolUseBlock.input);
                     finalResponse = formatToolResult(toolUseBlock.name, toolResult);
 
                     if (textBlock && textBlock.text) {
