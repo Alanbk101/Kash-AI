@@ -36,9 +36,9 @@ function formatToolResult(toolName, result) {
 
         case 'send_payment':
             if (result.success) {
-                return `✅ *Pago enviado exitosamente*\n\n👤 Para: ${result.recipient_name}\n🏦 CLABE: ${result.clabe}\n💰 Monto: $${result.amount.toLocaleString('es-MX')} MXN\n📝 Concepto: ${result.concept}\n📋 Referencia: ${result.reference}\n🕐 ${result.timestamp}`;
+            return `✅ *Pago enviado exitosamente*\n\n👤 Para: ${result.recipient_name}\n🏦 Banco: ${result.bank_name}\n📋 CLABE: ${result.clabe}\n💰 Monto: $${result.amount.toLocaleString("es-MX")} MXN\n📝 Concepto: ${result.concept}\n🔄 Método: ${result.method}\n📋 Referencia: ${result.reference}\n🕐 ${result.timestamp}`;
             }
-            return `❌ Error al enviar el pago. Intenta de nuevo.`;
+            return `❌ *Error en el pago:* ${result.error || "Intenta de nuevo."}`;
 
         case 'get_transactions':
             let txMsg = `📋 *Transacciones — ${result.period}*\n\n`;
