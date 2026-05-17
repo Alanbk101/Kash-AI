@@ -3,6 +3,7 @@ const { checkBalance, sendPayment, getTransactions, generateReport, requestPayme
 const { findUser, saveTransaction } = require('../database/supabaseClient');
 const { generateSmartReport, getUserTransactions } = require('./reportGenerator');
 const { checkRealBalance, formatBalance } = require("../payments/realPayments");
+const { getRealTransactions, formatRealTransactions } = require("../payments/realTransactions");
 
 // Historial de conversación por usuario (en memoria)
 const conversations = {};
@@ -145,9 +146,23 @@ async function processMessage(userId, userMessage, dbUser) {
                     }
 
                     conversations[userId] = [];
+                // Transacciones — usar datos reales de Supabase
+                } else if (toolUseBlock.name === "get_transactions") {
+                    const days = toolUseBlock.input.days || 7;
+                    if (dbUser && dbUser.id) {
+                        const realTx = await getRealTransactions(dbUser.id, days);
+                        finalResponse = formatRealTransactions(realTx, days);
+                    } else {
+                        const toolResult = await executeTool(toolUseBlock.name, toolUseBlock.input);
+                        finalResponse = formatToolResult(toolUseBlock.name, toolResult);
+                    }
+                    conversations[userId] = [];
 
                 // Otras tools — ejecutar directamente
                 } else {
+
+
+
                     const toolResult = await executeTool(toolUseBlock.name, toolUseBlock.input);
                     finalResponse = formatToolResult(toolUseBlock.name, toolResult);
 
