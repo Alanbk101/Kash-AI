@@ -83,4 +83,28 @@ async function saveTransaction(userId, transaction) {
     return data;
 }
 
-module.exports = { supabase, findUser, createUser, updateBusinessName, saveTransaction };
+// Guardar cobro/solicitud de pago
+async function savePaymentRequest(userId, requestData) {
+    const { data, error } = await supabase
+        .from('kash_transactions')
+        .insert([{
+            user_id: userId,
+            type: 'payment_request',
+            amount: requestData.amount,
+            currency: 'MXN',
+            recipient_name: requestData.client_name,
+            status: 'pending',
+            bitso_reference: requestData.reference,
+            ai_summary: `Cobro de $${requestData.amount} a ${requestData.client_name} — ${requestData.concept || 'Sin concepto'}`
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error guardando cobro:', error);
+        return null;
+    }
+    return data;
+}
+
+module.exports = { supabase, findUser, createUser, updateBusinessName, saveTransaction, savePaymentRequest };

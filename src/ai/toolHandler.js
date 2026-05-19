@@ -52,7 +52,8 @@ function formatToolResult(toolName, result) {
             return txMsg;
 
         case 'request_payment':
-            return `🧾 *Instrucciones de cobro*\n\nEnvía esto a *${result.client_name}*:\n\n─────────────\n🏦 Banco: ${result.bank}\n📋 CLABE: ${result.clabe_deposit}\n💰 Monto: $${result.amount.toLocaleString('es-MX')} MXN\n📝 Referencia: ${result.reference}\n📝 Concepto: ${result.concept}\n─────────────\n\n🔔 Te avisaré cuando llegue el depósito.`;
+            if (result.success === false) return `❌ *Error en cobro:* ${result.error}`;
+            return `🧾 *Instrucciones de cobro para ${result.client_name}*\n\nReenvía este mensaje a tu cliente:\n\n─────────────\n💰 *Pago pendiente*\n\n🏦 Banco: ${result.bank}\n📋 CLABE: ${result.clabe_deposit}\n💰 Monto: *$${result.amount.toLocaleString("es-MX")} MXN*\n📝 Referencia: ${result.reference}\n📝 Concepto: ${result.concept}\n\n⚠️ Favor de incluir la referencia en el concepto del pago.\n─────────────\n\n📋 Ref: ${result.reference}\n🕐 ${result.timestamp}\n\n_Generado por Kash.ai_`;
 
         default:
             return JSON.stringify(result);
@@ -157,6 +158,17 @@ async function processMessage(userId, userMessage, dbUser) {
                         finalResponse = formatToolResult(toolUseBlock.name, toolResult);
                     }
                     conversations[userId] = [];
+                // Cobros — guardar en Supabase
+                } else if (toolUseBlock.name === "request_payment") {
+                    const toolResult = await executeTool(toolUseBlock.name, toolUseBlock.input);
+                    finalResponse = formatToolResult(toolUseBlock.name, toolResult);
+                    if (dbUser && dbUser.id && toolResult.success !== false) {
+                        const { savePaymentRequest } = require("../database/supabaseClient");
+                        await savePaymentRequest(dbUser.id, toolResult);
+                        console.log("💾 Cobro guardado en Supabase");
+                    }
+                    conversations[userId] = [];
+
 
                 // Otras tools — ejecutar directamente
                 } else {
